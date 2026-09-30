@@ -8,6 +8,7 @@ import {
   SystemDataSourceStatus,
   ModelVersionStatus,
   CropStage,
+  StateOption,
 } from '../../shared/types';
 
 export interface CurrentWeather {
@@ -54,11 +55,46 @@ export interface WeatherForecast {
   }>;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+export function getApiBaseUrl(): string {
+  let url = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  // In browser runtime: If running in production (e.g. on Vercel or external domain)
+  // and NEXT_PUBLIC_API_URL is missing or incorrectly points to localhost,
+  // default to the verified production Render backend.
+  if (typeof window !== 'undefined') {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+
+    if (!url && !isLocalhost) {
+      url = 'https://farm-helper-kglt.onrender.com/api';
+    } else if (url && url.includes('localhost') && !isLocalhost) {
+      url = 'https://farm-helper-kglt.onrender.com/api';
+    }
+  }
+
+  if (!url) {
+    url = 'http://localhost:8000/api';
+  }
+
+  // Strip trailing slashes
+  url = url.replace(/\/+$/, '');
+
+  // Ensure /api suffix
+  if (!url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+
+  return url;
+}
 
 async function fetchFromApi<T>(path: string, options?: RequestInit): Promise<T | null> {
+  const baseUrl = getApiBaseUrl();
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const targetUrl = `${baseUrl}${cleanPath}`;
+
   try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    const res = await fetch(targetUrl, {
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
@@ -68,21 +104,56 @@ async function fetchFromApi<T>(path: string, options?: RequestInit): Promise<T |
     });
 
     if (!res.ok) {
-      console.warn(`API request failed for ${path}: status ${res.status}`);
+      console.warn(`API request failed for ${targetUrl}: status ${res.status}`);
+      // Fallback: If 404 and baseUrl ends with /api, try root path in case endpoint is mounted at root
+      if (res.status === 404 && baseUrl.endsWith('/api')) {
+        const rootBase = baseUrl.slice(0, -4);
+        const rootUrl = `${rootBase}${cleanPath}`;
+        try {
+          const rootRes = await fetch(rootUrl, {
+            headers: { 'Content-Type': 'application/json', ...options?.headers },
+            ...options,
+            cache: 'no-store',
+          });
+          if (rootRes.ok) {
+            return (await rootRes.json()) as T;
+          }
+        } catch {
+          // Ignore root fallback error
+        }
+      }
       return null;
     }
 
     return (await res.json()) as T;
   } catch (error) {
-    console.warn(`API network error connecting to ${path}:`, error);
+    console.warn(`API network error connecting to ${targetUrl}:`, error);
+
+    // If local fetch failed while running in browser, attempt fallback to production Render API
+    if (baseUrl.includes('localhost') && typeof window !== 'undefined') {
+      const renderFallbackUrl = `https://farm-helper-kglt.onrender.com/api${cleanPath}`;
+      try {
+        const fbRes = await fetch(renderFallbackUrl, {
+          headers: { 'Content-Type': 'application/json', ...options?.headers },
+          ...options,
+          cache: 'no-store',
+        });
+        if (fbRes.ok) {
+          return (await fbRes.json()) as T;
+        }
+      } catch {
+        // Ignore fallback error
+      }
+    }
+
     return null;
   }
 }
 
 export const apiClient = {
   // Locations endpoint
-  async getLocations(): Promise<any[] | null> {
-    return fetchFromApi<any[]>('/locations');
+  async getLocations(): Promise<StateOption[] | null> {
+    return fetchFromApi<StateOption[]>('/locations');
   },
 
   async searchLocations(q: string): Promise<any[] | null> {

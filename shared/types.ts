@@ -26,6 +26,7 @@ export interface GeoLocation {
 export interface StateOption {
   id: string;
   name: string;
+  code?: string;
   districts: DistrictOption[];
 }
 
@@ -51,7 +52,7 @@ export interface PanchayatOption {
   blockId: string;
   latitude: number;
   longitude: number;
-  elevationMeters: number;
+  elevationMeters?: number;
 }
 
 export interface ProbabilityMetric {

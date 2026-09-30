@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '../store/locationStore';
 import { TRANSLATIONS } from '../../shared/translations';
 import { apiClient } from '../lib/api';
-import { MapPin, Mountain, Compass, Database } from 'lucide-react';
+import { MapPin, Mountain, Compass, Database, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface LocationSelectorProps {
   compact?: boolean;
@@ -26,21 +26,35 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({ compact = fa
   } = useAppStore();
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
+
+  const loadLocations = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiClient.getLocations();
+      if (data && Array.isArray(data) && data.length > 0) {
+        setStates(data);
+        setError(null);
+      } else if (data && Array.isArray(data) && data.length === 0) {
+        setError('No administrative locations returned by registry.');
+      } else {
+        setError('Failed to load administrative locations from API.');
+      }
+    } catch (err: any) {
+      console.error('Failed to load administrative locations:', err);
+      setError(err?.message || 'Network error connecting to administrative location registry.');
+    } finally {
+      setLoading(false);
+    }
+  }, [setStates]);
 
   useEffect(() => {
     if (states.length === 0) {
-      setLoading(true);
-      apiClient.getLocations().then((data) => {
-        if (data && Array.isArray(data) && data.length > 0) {
-          setStates(data);
-        }
-        setLoading(false);
-      }).catch(() => {
-        setLoading(false);
-      });
+      loadLocations();
     }
-  }, [states.length, setStates]);
+  }, [states.length, loadLocations]);
 
   const currentDistricts = selectedState ? selectedState.districts : [];
   const currentBlocks = selectedDistrict ? selectedDistrict.blocks : [];
@@ -48,8 +62,27 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({ compact = fa
 
   if (loading) {
     return (
-      <div className="bg-monsoon-forest/50 border border-monsoon-border/60 rounded-xl p-3.5 text-xs text-slate-400">
-        Loading configured administrative locations from registry...
+      <div className="bg-monsoon-forest/50 border border-monsoon-border/60 rounded-xl p-3.5 flex items-center gap-2 text-xs text-slate-300">
+        <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+        <span>Loading configured administrative locations from registry...</span>
+      </div>
+    );
+  }
+
+  if (error && states.length === 0) {
+    return (
+      <div className="bg-monsoon-forest/40 border border-amber-500/40 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-200">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <span>Location Registry Error: {error}</span>
+        </div>
+        <button
+          onClick={() => loadLocations()}
+          className="flex items-center gap-1.5 px-3 py-1 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-600/50 rounded-lg text-[11px] font-medium text-amber-200 transition-colors"
+        >
+          <RefreshCw className="w-3 h-3" />
+          Retry
+        </button>
       </div>
     );
   }
@@ -59,7 +92,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({ compact = fa
       <div className="bg-monsoon-forest/40 border border-monsoon-border/60 rounded-xl p-3.5 flex items-center justify-between text-xs text-slate-300">
         <div className="flex items-center gap-2">
           <Database className="w-4 h-4 text-amber-400" />
-          <span>Geographic Registry: No administrative locations currently configured in PostGIS database.</span>
+          <span>Geographic Registry: No administrative locations currently configured in database.</span>
         </div>
       </div>
     );
@@ -80,7 +113,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({ compact = fa
             </span>
             <span className="flex items-center gap-1">
               <Mountain className="w-3.5 h-3.5 text-slate-500" />
-              {selectedPanchayat.elevationMeters}m MSL
+              {selectedPanchayat.elevationMeters ?? 360}m MSL
             </span>
           </div>
         )}

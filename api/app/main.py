@@ -27,8 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers under /api
+# Register routers under /api and alias for locations
 app.include_router(locations.router, prefix="/api")
+app.include_router(locations.router, prefix="")
 app.include_router(forecast.router, prefix="/api")
 app.include_router(climate.router, prefix="/api")
 app.include_router(risk_map.router, prefix="/api")
