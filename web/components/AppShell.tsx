@@ -4,12 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
+import { PublicNavbar } from './PublicNavbar';
 import { useAppStore } from '../store/locationStore';
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../../shared/types';
 import { ShieldAlert, Shield, Loader2, Lock } from 'lucide-react';
-
-const PUBLIC_PREFIXES = ['/', '/login', '/signup', '/about', '/how-it-works'];
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -18,9 +17,19 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const { userRole, setUserRole } = useAppStore();
   const { restoreSession, user, isAuthenticated, isLoading } = useAuthStore();
 
+  const isAuthStandalonePage = pathname === '/login' || pathname === '/signup';
+  const isPublicContentPage = pathname === '/' || pathname === '/about' || pathname === '/how-it-works';
+  const isPublicRoute = isAuthStandalonePage || isPublicContentPage;
+
+  const isOfficerRoute = pathname?.startsWith('/officer');
+  const isAdminRoute = pathname?.startsWith('/admin');
+
+  // Only restore session and synchronize on protected routes
   useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
+    if (!isPublicRoute) {
+      restoreSession();
+    }
+  }, [restoreSession, isPublicRoute]);
 
   // Synchronize authenticated user role as authoritative
   useEffect(() => {
@@ -29,40 +38,32 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [user?.role, userRole, setUserRole]);
 
-  const isPublicRoute = PUBLIC_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(prefix + '/')
-  );
-  const isOfficerRoute = pathname?.startsWith('/officer');
-  const isAdminRoute = pathname?.startsWith('/admin');
-
-  // Enforce unauthenticated redirect on client while middleware handles edge
+  // Enforce unauthenticated redirect on client for protected routes
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && !isPublicRoute) {
+    if (!isPublicRoute && !isLoading && !isAuthenticated) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
   }, [isLoading, isAuthenticated, isPublicRoute, pathname, router]);
 
-  // Show loading spinner while authenticating on protected routes
-  if (isLoading && !isPublicRoute) {
+  // 1. Completely standalone public pages (/login, /signup)
+  // Public pages must NOT render AppShell, Sidebar, Navbar, authenticated user information, role information, or protected navigation.
+  if (isAuthStandalonePage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-monsoon-dark text-slate-100">
-        <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-monsoon-surface border border-monsoon-border">
-          <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
-          <p className="text-xs text-slate-400 font-mono">Verifying Supabase authentication session...</p>
-        </div>
+      <div className="min-h-screen bg-monsoon-dark text-slate-100 flex flex-col justify-center items-center p-4">
+        {children}
       </div>
     );
   }
 
-  // If unauthenticated and on protected route, block content rendering until redirect completes
-  if (!isAuthenticated && !isPublicRoute) {
+  // 2. Public content pages (/, /about, /how-it-works)
+  // Render clean PublicNavbar and public container with NO Sidebar, NO authenticated user info, NO role info, NO protected nav.
+  if (isPublicContentPage) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-monsoon-dark text-slate-100">
-        <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-monsoon-surface border border-monsoon-border text-center max-w-sm">
-          <Lock className="w-8 h-8 text-amber-400" />
-          <h2 className="text-sm font-bold text-white">Authentication Required</h2>
-          <p className="text-xs text-slate-400">Redirecting to sign in...</p>
-        </div>
+      <div className="min-h-screen flex flex-col bg-monsoon-dark text-slate-100">
+        <PublicNavbar />
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+          {children}
+        </main>
       </div>
     );
   }
@@ -71,6 +72,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const isOfficerForbidden = isOfficerRoute && effectiveRole !== 'officer' && effectiveRole !== 'admin';
   const isAdminForbidden = isAdminRoute && effectiveRole !== 'admin';
 
+  // 4. Authenticated Protected Route: Render full AppShell with Navbar and Sidebar
   return (
     <div className="min-h-screen flex flex-col bg-monsoon-dark text-slate-100">
       <Navbar

@@ -174,11 +174,18 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="pt-2 text-center border-t border-monsoon-border/50 text-xs text-slate-400">
-          <span>Don't have an account? </span>
-          <Link href="/signup" className="text-emerald-400 hover:underline font-semibold">
-            Create Account
-          </Link>
+        <div className="pt-2 text-center border-t border-monsoon-border/50 text-xs text-slate-400 space-y-2">
+          <div>
+            <span>Don't have an account? </span>
+            <Link href="/signup" className="text-emerald-400 hover:underline font-semibold">
+              Create Account
+            </Link>
+          </div>
+          <div>
+            <Link href="/" className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors">
+              ← Return to MONSOON-SENSE Overview
+            </Link>
+          </div>
         </div>
       </div>
     </div>
